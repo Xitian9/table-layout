@@ -59,6 +59,7 @@ instance Cell a => Cell (Formatted a) where
     dropRight i = snd . mapAccumR (dropTrackRemaining dropRight) i
     visibleLength = sum . fmap visibleLength
     measureAlignment p = foldl' (mergeAlign p) mempty
+    emptyCell = mempty
     buildCell = buildCellMF
 
 -- | Drop characters either from the right or left, while also tracking the
