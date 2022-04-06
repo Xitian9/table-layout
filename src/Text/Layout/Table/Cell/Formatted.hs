@@ -11,6 +11,7 @@ module Text.Layout.Table.Cell.Formatted
     ( Formatted
     , plain
     , formatted
+    , mergeAlign
     ) where
 
 import Data.List (foldl', mapAccumL, mapAccumR)
