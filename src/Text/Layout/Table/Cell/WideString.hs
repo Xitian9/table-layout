@@ -6,6 +6,7 @@ module Text.Layout.Table.Cell.WideString
     , WideText(..)
     ) where
 
+import Data.Bifunctor (first, second)
 import Data.String
 import qualified Data.Text as T
 import Text.DocLayout
@@ -19,8 +20,10 @@ newtype WideString = WideString String
     deriving (Eq, Ord, Show, Read, Semigroup, Monoid, IsString)
 
 instance Cell WideString where
-    dropLeft i (WideString s) = WideString $ dropWide True i s
-    dropRight i (WideString s) = WideString . reverse . dropWide False i $ reverse s
+    dropLeft i (WideString s) = let (w, e) = dropWide True i s in WideString $ replicate e ' ' ++ w
+    dropRight i (WideString s) = let (w, e) = dropWide False i (reverse s) in WideString $ reverse w ++ replicate e ' '
+    dropLeftNoPad i (WideString s) = let (w, e) = dropWide True i s in (e, WideString w)
+    dropRightNoPad i (WideString s) = let (w, e) = dropWide False i (reverse s) in (WideString $ reverse w, e)
     visibleLength (WideString s) = realLength s
     measureAlignment p (WideString s) = measureAlignmentWide p s
     buildCell (WideString s) = buildCell s
@@ -30,13 +33,13 @@ instance Cell WideString where
 --
 -- The provided `Bool` determines whether to continue dropping zero-width
 -- characters after the requested width has been dropped.
-dropWide :: Bool -> Int -> String -> String
-dropWide _ i [] = []
+dropWide :: Bool -> Int -> String -> (String, Int)
+dropWide _ i [] = ([], 0)
 dropWide gobbleZeroWidth i l@(x : xs)
     | gobbleZeroWidth && i == 0 && charLen == 0 = dropWide gobbleZeroWidth i xs
-    | i <= 0       = l
+    | i <= 0       = (l, 0)
     | charLen <= i = dropWide gobbleZeroWidth (i - charLen) xs
-    | otherwise    = replicate (charLen - i) ' ' ++ dropWide gobbleZeroWidth 0 xs
+    | otherwise    = second (+ (charLen - i)) $ dropWide gobbleZeroWidth 0 xs
   where
     charLen = charWidth x
 
@@ -51,28 +54,30 @@ newtype WideText = WideText T.Text
     deriving (Eq, Ord, Show, Read, Semigroup, Monoid, IsString)
 
 instance Cell WideText where
-    dropLeft i (WideText s) = WideText $ dropLeftWideT i s
-    dropRight i (WideText s) = WideText $ dropRightWideT i s
+    dropLeft i (WideText s) = let (e, w) = dropLeftWideT i s in WideText $ T.replicate e " " <> w
+    dropRight i (WideText s) = let (w, e) = dropRightWideT i s in WideText $ w <> T.replicate e " "
+    dropLeftNoPad i (WideText s) = second WideText $ dropLeftWideT i s
+    dropRightNoPad i (WideText s) = first WideText $ dropRightWideT i s
     visibleLength (WideText s) = realLength s
     measureAlignment p (WideText s) = measureAlignmentWideT p s
     buildCell (WideText s) = buildCell s
 
-dropLeftWideT :: Int -> T.Text -> T.Text
+dropLeftWideT :: Int -> T.Text -> (Int, T.Text)
 dropLeftWideT i txt = case T.uncons txt of
-    Nothing -> txt
+    Nothing -> (0, txt)
     Just (x, xs) -> let l = charWidth x in if
         | i == 0 && l == 0 -> dropLeftWideT i xs
-        | i <= 0    -> txt
+        | i <= 0    -> (0, txt)
         | l <= i    -> dropLeftWideT (i - l) xs
-        | otherwise -> T.replicate (l - i) " " <> dropLeftWideT 0 xs
+        | otherwise -> first (+ (l - i)) $ dropLeftWideT 0 xs
 
-dropRightWideT :: Int -> T.Text -> T.Text
+dropRightWideT :: Int -> T.Text -> (T.Text, Int)
 dropRightWideT i txt = case T.unsnoc txt of
-    Nothing -> txt
+    Nothing -> (txt, 0)
     Just (xs, x) -> let l = charWidth x in if
-        | i <= 0    -> txt
+        | i <= 0    -> (txt, 0)
         | l <= i    -> dropRightWideT (i - l) xs
-        | otherwise -> xs <> T.replicate (l - i) " "
+        | otherwise -> (xs, l - i)
 
 measureAlignmentWideT :: (Char -> Bool) -> T.Text -> AlignInfo
 measureAlignmentWideT p xs = case T.break p xs of

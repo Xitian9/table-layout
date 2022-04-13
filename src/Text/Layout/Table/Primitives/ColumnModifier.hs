@@ -1,6 +1,7 @@
 module Text.Layout.Table.Primitives.ColumnModifier where
 
 import Control.Arrow ((&&&))
+import Data.Bifunctor (bimap)
 import Data.List
 
 import Text.Layout.Table.Cell
@@ -93,25 +94,40 @@ columnModifier pos cms colModInfo = case colModInfo of
         maybe (trimOrPad pos cms lim) (uncurry $ alignFixed pos cms lim) mT
 
 -- | Derive the 'ColModInfo' by using layout specifications and the actual cells
--- of a column. This function only needs to know about 'LenSpec' and 'AlignInfo'.
-deriveColModInfos :: Cell a => [(LenSpec, AlignSpec)] -> [Row a] -> [ColModInfo]
+-- of a column. This function only needs to know about 'LenSpec', 'Position',
+-- and 'AlignInfo'.
+deriveColModInfos :: Cell a => [(LenSpec, Position H, AlignSpec)] -> [Row a] -> [ColModInfo]
 deriveColModInfos specs = zipWith ($) (fmap fSel specs) . transpose
   where
-    fSel (lenS, alignS) = case alignS of
-        NoAlign     -> let fitTo i              = const $ FitTo i Nothing
-                           expandUntil' f i max' = if f (max' <= i)
-                                                   then FillTo max'
-                                                   else fitTo i max'
-                           expandBetween' i j max' | max' > j  = fitTo j max'
-                                                   | max' < i  = fitTo i max'
-                                                   | otherwise = FillTo max'
-                           fun                  = case lenS of
-                               Expand            -> FillTo
-                               Fixed i           -> fitTo i
-                               ExpandUntil i     -> expandUntil' id i
-                               FixedUntil i      -> expandUntil' not i
+    fSel (lenS, posS, alignS) = case alignS of
+        NoAlign     -> let fitTo i             = const $ FitTo i Nothing
+                           expandUntil' i (max', tmax)
+                                               = if max' <= i
+                                                 then FillTo max'
+                                                 else fitTo (min tmax i) max'
+                           fixedUntil' i max'  = if max' > i
+                                                 then FillTo max'
+                                                 else fitTo i max'
+                           expandBetween' i j (max', tmax)
+                                                 | max' > j  = fitTo (max i $ min tmax j) max'
+                                                 | max' < i  = fitTo i max'
+                                                 | otherwise = FillTo max'
+                           cellWidthAndTrim a = let l = visibleLength a in case lenS of
+                               ExpandUntil i     -> (l, min l $ i - dropOvershot (l - i) a)
+                               ExpandBetween _ i -> (l, min l $ i - dropOvershot (l - i) a)
+                               _                 -> (l, l)
+                           dropOvershot d = case posS of
+                               Start  -> snd . dropRightNoPad d
+                               Center -> let (q, r) = d `divMod` 2
+                                         in (\(l, _, r) -> l + r) . dropBothNoPad q (q + r)
+                               End    -> fst . dropLeftNoPad d
+                           fun                 = case lenS of
+                               Expand            -> FillTo . fst
+                               Fixed i           -> fitTo i . fst
+                               ExpandUntil i     -> expandUntil' i
+                               FixedUntil i      -> fixedUntil' i . fst
                                ExpandBetween i j -> expandBetween' i j
-                       in fun . maximum . map visibleLength
+                       in fun . bimap maximum maximum . unzip . map cellWidthAndTrim
         AlignOcc oS -> let fitToAligned i      = FitTo i . Just . (,) oS
                            fillAligned         = FillAligned oS
                            expandUntil' f i ai = if f (widthAI ai <= i)
@@ -129,7 +145,7 @@ deriveColModInfos specs = zipWith ($) (fmap fSel specs) . transpose
                         in fun . foldMap (deriveAlignInfo oS)
 
 deriveColModInfos' :: Cell a => [ColSpec] -> [Row a] -> [ColModInfo]
-deriveColModInfos' = deriveColModInfos . fmap (lenSpec &&& alignSpec)
+deriveColModInfos' = deriveColModInfos . fmap (\c -> (lenSpec c, position c, alignSpec c))
 
 -- | Derive the 'ColModInfo' and generate functions without any intermediate
 -- steps.

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Text.Layout.Table.Cell where
 
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first, second)
 import qualified Data.Text as T
 
 import Text.Layout.Table.Primitives.AlignInfo
@@ -29,6 +29,34 @@ class Cell a where
     dropBoth :: Int -> Int -> a -> a
     dropBoth l r = dropRight r . dropLeft l
 
+    -- | Like 'dropLeft', but does not add extra padding if the exact amount
+    -- can't be dropped. The amount of padding needed is returned with the
+    -- result.
+    dropLeftNoPad :: Int -> a -> (Int, a)
+    dropLeftNoPad n a = (0, dropLeft n a)
+
+    -- | Like 'dropRight, but does not add extra padding if the exact amount
+    -- can't be dropped. The amount of padding needed is returned with the
+    -- result.
+    dropRightNoPad :: Int -> a -> (a, Int)
+    dropRightNoPad n a = (dropRight n a, 0)
+
+    -- | Like 'dropBoth, but does not add extra padding if the exact amount
+    -- can't be dropped. The amount of left and right padding needed is
+    -- returned with the result.
+    -- The default implementation, when invoked with @dropBothNoPad l r@, will
+    -- first drop @l@ from the left and then will drop an amount from the right
+    -- so that the total dropped is @l + r@. Note that this means it may drop
+    -- less than @r@ from the right if it is forced to drop more than @l@ from
+    -- the left.
+    dropBothNoPad :: Int -> Int -> a -> (Int, a, Int)
+    dropBothNoPad l' r' = go (max 0 l') (max 0 r')
+      where
+        go 0 0 a = (0, a, 0)
+        go l r a = apportionPadding l r . dropRightAdjusted r $ dropLeftNoPad l a
+        apportionPadding l r (x, p) = let pl = (p * l) `div` (l + r) in (pl, x, p - pl)
+        dropRightAdjusted r (p, x) = dropRightNoPad (r - p) x
+
     -- | Returns the length of the visible characters as displayed on the
     -- output medium.
     visibleLength :: a -> Int
@@ -46,6 +74,11 @@ instance (Cell a, Cell b) => Cell (Either a b) where
     dropLeft n = bimap (dropLeft n) (dropLeft n)
     dropRight n = bimap (dropRight n) (dropRight n)
     dropBoth l r = bimap (dropBoth l r) (dropBoth l r)
+    dropLeftNoPad n = either (second Left . dropLeftNoPad n) (second Right . dropLeftNoPad n)
+    dropRightNoPad n = either (first Left . dropRightNoPad n) (first Right . dropRightNoPad n)
+    dropBothNoPad l r = either (middle Left . dropBothNoPad l r) (middle Right . dropBothNoPad l r)
+      where
+        middle f (a, b, c) = (a, f b, c)
     visibleLength = either visibleLength visibleLength
     measureAlignment p = either (measureAlignment p) (measureAlignment p)
     buildCell = either buildCell buildCell
