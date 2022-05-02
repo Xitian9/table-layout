@@ -343,7 +343,7 @@ tableLinesB specs TableStyle { .. } rowHeader colHeader rowGroups =
         _ ->
             let attachRowHeader grps = map (\(hSpec, (grp, r)) -> (Just (hSpec, r), grp))
                                      . headerContents $ zipHeader (rowG []) grps rowHeader
-                singleColCMI = listToMaybe . deriveColModInfos [(expand, noAlign)] . map pure
+                singleColCMI = listToMaybe . deriveColModInfos [(expand, left, noAlign)] . map pure
             in
             ( attachRowHeader
             , singleColCMI . map snd $ headerContents rowHeader

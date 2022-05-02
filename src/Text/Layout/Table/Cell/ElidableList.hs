@@ -41,6 +41,7 @@ instance (Cell a, Cell b) => Cell (ElidableList a b) where
     dropBothNoPad = dropBothElided
     visibleLength = sum . map visibleLength . elidableListHelper
     measureAlignment p = foldl' (mergeAlign p) mempty . elidableListHelper
+    emptyCell = ElidableList True (const emptyCell) emptyCell 0 0 0 []
     buildCell = foldMap buildCell . elidableListHelper
 
 instance (Eq a, Eq b) => Eq (ElidableList a b) where
