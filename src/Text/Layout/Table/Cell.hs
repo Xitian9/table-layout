@@ -65,10 +65,14 @@ class Cell a where
     -- the predicate matches.
     measureAlignment :: (Char -> Bool) -> a -> AlignInfo
 
+    -- | Create an empty cell.
+    -- This should satisfy `buildCell emptyCell = mempty`.
+    emptyCell :: a
+
     -- | Insert the contents into a 'StringBuilder'.
     buildCell :: StringBuilder b => a -> b
 
-    {-# MINIMAL visibleLength, measureAlignment, buildCell, (dropBoth | (dropLeft, dropRight))  #-}
+    {-# MINIMAL visibleLength, measureAlignment, emptyCell, buildCell, (dropBoth | (dropLeft, dropRight))  #-}
 
 instance (Cell a, Cell b) => Cell (Either a b) where
     dropLeft n = bimap (dropLeft n) (dropLeft n)
@@ -81,6 +85,7 @@ instance (Cell a, Cell b) => Cell (Either a b) where
         middle f (a, b, c) = (a, f b, c)
     visibleLength = either visibleLength visibleLength
     measureAlignment p = either (measureAlignment p) (measureAlignment p)
+    emptyCell = Right emptyCell
     buildCell = either buildCell buildCell
 
 instance Cell String where
@@ -92,6 +97,7 @@ instance Cell String where
             []      -> Nothing
             _ : rs' -> Just $ length rs'
 
+    emptyCell = ""
     buildCell = stringB
 
 instance Cell T.Text where
@@ -103,6 +109,7 @@ instance Cell T.Text where
             then Nothing
             else Just $ T.length rs - 1
 
+    emptyCell = T.pack ""
     buildCell = textB
 
 remSpacesB :: (Cell a, StringBuilder b) => Int -> a -> b
